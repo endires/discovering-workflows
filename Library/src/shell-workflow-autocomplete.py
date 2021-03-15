@@ -4,6 +4,9 @@ import csv
 import argparse
 from collections import Counter
 from collections import OrderedDict 
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.metrics.pairwise import euclidean_distances
+from operator import itemgetter
 
 #Simple shell-workflow-autocomplete program:Finished Exact match
 #Given an initial command (e.g., git, ps, du, etc.) provide a ranked autocomple^te functionality.
@@ -46,11 +49,10 @@ argquery = " SELECT command.alias_id  from argument join command on command.comm
 # add alias to list.
 
 operators = ["&", "&&", ";", "|", "|&", "||"]
-components = []
-
 
 container ={}
 def getargs () :
+	components = []
 	args= sys.argv[1:len(sys.argv)]
 	i=0
 	compcnt = 0 
@@ -182,7 +184,9 @@ def fuzzyrestofcomponents(aliascontainer, comps):
 
 def fuzzymatch(comps):
 	aliascontainer = getfirstcomp(comps,0)
+	#print(aliascontainer)
 #get the rest of the components , comps = components
+	print (comps)
 	fuzzyout = fuzzyrestofcomponents(aliascontainer, comps )
 	return fuzzyout 
 	
@@ -197,8 +201,58 @@ def deletekeys(inputlist, delkeys):
 		if key in inputlist:
 			del inputlist[key]
 	return inputlist
+
+def changecomps(comps):
+	i = 0
+	eucomps = []
+	#print (len(comps))
+	while i< len(comps):
+		print (comps[i])
+		#print(line)
+		tempcomps=[]
+		for word in comps[i]:
+			if not any (o in word for o in operators):
+				tempcomps.append("%")
+			else:
+				tempcomps.append(word)
+		#print(tempcomps)
+		eucomps.append(tempcomps)
+		i = i+1
+	return eucomps
+           
+def formsearchquery(comps):
+	searchquery =''
+	i =0
+	for c in comps:
+		if i == 0:
+			searchquery = " ".join(c[0 : len(c)])
+			i=1
+		else:
+			searchquery = searchquery +" "+ " ".join(c[0 : len(c)])
+	searchquery = searchquery.replace("%", "")
+	return searchquery
+
+def euclidean (aliases, searchquery):
+	vectorizer = CountVectorizer()
+	dictlist = list (aliases.values())
+	
+	dictlist =  [searchquery] + dictlist
+	#print (dictlist)
+	features = vectorizer.fit_transform(dictlist).todense() 
+	distance_feature = {}
+		
+	i = 0
+	for f in features:
+		vector = euclidean_distances(  features[0], f )[0][0]
+		distance_feature[dictlist[i]] = vector
+		i = i + 1
+	
+	distance_feature = dict(sorted(distance_feature.items() , key=itemgetter(1)))
+	for f in distance_feature: 
+		print (str(f) + " : " + str (distance_feature[f] )+"\n")
+	           
             
-def searchdatabase (compomnents): #components
+def searchdatabase (comps): #components
 	#get first component and alias ids
 
 	fuzzyresult = fuzzymatch(comps)
@@ -208,8 +262,9 @@ def searchdatabase (compomnents): #components
 	exactresult = exactmatch (comps)
 	output = countocc(exactresult)
 	#writeoutput('./outputexact.csv', output)
-	
-	if not (fuzzyresult is None and exactresult is None):
+
+	if   fuzzyresult and  exactresult :
+		print("HERE1")
 		if exactresult is None :
 			output = fuzzyresult
 		else :
@@ -219,8 +274,19 @@ def searchdatabase (compomnents): #components
 		
 		output = countocc(output)
 		writeoutput('./newfuzzy.csv', output)
-	#else:
-		#do euclidian on : command % operator command % and add to output
+	else:
+		eucomps = changecomps(comps)
+		fuzzyresult = fuzzymatch(eucomps)
+		
+		searchquery = formsearchquery(comps)	
+		print("-----")
+		print (searchquery)
+		print("-----")
+		output = euclidean(fuzzyresult, searchquery)
+		#print(fuzzyresult)
+		#output = countocc(fuzzyresult)
+		#writeoutput("./out.csv",output)
+		
 		
 
 def runquery(query, exact):
@@ -263,6 +329,6 @@ def writeoutput(file, output):
 		
 #components
 comps =  getargs() 
-print(comps)
+#print(comps)
 searchdatabase(comps)
 
