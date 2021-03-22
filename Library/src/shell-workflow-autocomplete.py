@@ -5,8 +5,10 @@ import argparse
 from collections import Counter
 from collections import OrderedDict 
 from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.metrics.pairwise import euclidean_distances
 from operator import itemgetter
+import enchant 
 
 #Simple shell-workflow-autocomplete program:Finished Exact match
 #Given an initial command (e.g., git, ps, du, etc.) provide a ranked autocomple^te functionality.
@@ -118,6 +120,8 @@ def countocc (aliases):
 	return sortedcnt
 
 
+
+
 def getfirstcomp(comps, exact):
 	#get first component from database
 	query = formquery(comps[0],0, len(comps))
@@ -184,9 +188,7 @@ def fuzzyrestofcomponents(aliascontainer, comps):
 
 def fuzzymatch(comps):
 	aliascontainer = getfirstcomp(comps,0)
-	#print(aliascontainer)
 #get the rest of the components , comps = components
-	print (comps)
 	fuzzyout = fuzzyrestofcomponents(aliascontainer, comps )
 	return fuzzyout 
 	
@@ -205,17 +207,13 @@ def deletekeys(inputlist, delkeys):
 def changecomps(comps):
 	i = 0
 	eucomps = []
-	#print (len(comps))
 	while i< len(comps):
-		print (comps[i])
-		#print(line)
 		tempcomps=[]
 		for word in comps[i]:
 			if not any (o in word for o in operators):
 				tempcomps.append("%")
 			else:
 				tempcomps.append(word)
-		#print(tempcomps)
 		eucomps.append(tempcomps)
 		i = i+1
 	return eucomps
@@ -229,28 +227,49 @@ def formsearchquery(comps):
 			i=1
 		else:
 			searchquery = searchquery +" "+ " ".join(c[0 : len(c)])
-	searchquery = searchquery.replace("%", "")
+	searchquery = searchquery.replace("% ", "")
 	return searchquery
 
-def euclidean (aliases, searchquery):
-	vectorizer = CountVectorizer()
-	dictlist = list (aliases.values())
-	
-	dictlist =  [searchquery] + dictlist
-	#print (dictlist)
-	features = vectorizer.fit_transform(dictlist).todense() 
-	distance_feature = {}
-		
+def leven (aliases, searchquery):
+	distance_feature = {}	
 	i = 0
-	for f in features:
-		vector = euclidean_distances(  features[0], f )[0][0]
-		distance_feature[dictlist[i]] = vector
-		i = i + 1
+	for a in aliases.values():
+		leven_dist = enchant.utils.levenshtein(  searchquery,a )
+		distance_feature[a] = leven_dist
+		i = i + 1            
 	
 	distance_feature = dict(sorted(distance_feature.items() , key=itemgetter(1)))
+	i=0
+	topfeat = {}
 	for f in distance_feature: 
-		print (str(f) + " : " + str (distance_feature[f] )+"\n")
-	           
+		if ( distance_feature[f] < len(searchquery)/2):
+			topfeat[f]=distance_feature[f]
+		i=i+1
+	
+	#print(distance_feature)
+	newas = {}		
+	for a in aliases: 
+		for f in topfeat:
+			if f == aliases[a] :  
+				newas[a] = aliases[a]
+	print(len(topfeat))
+	occ = countocc(newas)
+	
+	# 0-alias 1 - occ
+	for o in occ:
+		print(str(o[0])+"\n")
+	
+	i = 0  	
+	out ={}
+	for d in distance_feature:
+		for o in occ:	
+			if d == o[0] :
+				out[o] =distance_feature[d]
+				i=i+1
+				
+	#print(out)
+	return out
+
             
 def searchdatabase (comps): #components
 	#get first component and alias ids
@@ -264,7 +283,6 @@ def searchdatabase (comps): #components
 	#writeoutput('./outputexact.csv', output)
 
 	if   fuzzyresult and  exactresult :
-		print("HERE1")
 		if exactresult is None :
 			output = fuzzyresult
 		else :
@@ -273,19 +291,15 @@ def searchdatabase (comps): #components
 			output = exactresult | newfuzzy
 		
 		output = countocc(output)
-		writeoutput('./newfuzzy.csv', output)
+		writeoutput('./output.csv', output)
 	else:
 		eucomps = changecomps(comps)
 		fuzzyresult = fuzzymatch(eucomps)
 		
 		searchquery = formsearchquery(comps)	
-		print("-----")
-		print (searchquery)
-		print("-----")
-		output = euclidean(fuzzyresult, searchquery)
-		#print(fuzzyresult)
-		#output = countocc(fuzzyresult)
-		#writeoutput("./out.csv",output)
+		output = leven(fuzzyresult, searchquery)
+		#output = countocc(output)
+		writeoutput("./output.csv",output)
 		
 		
 
