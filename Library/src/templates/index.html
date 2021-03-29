@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <link rel="stylesheet" type="text/css"href="{{ url_for('static', filename='style.css') }}">
+
+  <title>Workflow autocomplete</title>
+</head>
+
+<body>
+<header>
+    <a href="/">Workflow autocomplete</a>
+  </nav>
+</header>
+
+<main>
+  <section id="searchsec">
+    <form role="search" class="search-form" method="POST">
+      <input type="search" id="search" name="q" placeholder="{{name}}" aria-labelledby="search-button">
+    
+     <input type="submit" value="Search"  >
+    
+    </form>
+  </section>
+   {% if results %}
+  <h2 class="search-info" id="search-info">Results for "{{name}}"</h2>
+  {% else %}
+    <h2 class="search-info" id="search-info">Search the alias database.</h2>
+  {% endif %}
+  <section class="output" id="output">
+  {% if results %}
+    <table>
+         <tr>
+            <th> Frequency </th>
+            <th> Alias</th>
+         </tr>   
+        {% for line in results%}
+        <tr>
+            <td> {{ line[1] }} </td>
+            <td> {{ line[0] }} </td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% endif %}
+   </section>
+</main>
+
+</body>
+
+</html>
