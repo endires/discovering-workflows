@@ -52,9 +52,9 @@ def getargums (argums) :
 
 def formatcmd (cmd) :
 	if  "%" in cmd:
-		cmd = "LIKE \""+cmd + "\""
+		cmd = "LIKE \'"+cmd + "\'"
 	else :
-		cmd = "= \""+cmd +"\""
+		cmd = "= \'"+cmd +"\'"
 	return cmd
 	
 def formquery(args , aliasids , num_cmd): 
@@ -62,13 +62,17 @@ def formquery(args , aliasids , num_cmd):
 	rest =  ' '.join(args[1:len(args)])
 	
 	if aliasids == 0 :
-		firstquery = "SELECT  command.alias_id , command.name, command.arguments from 	command join alias on command.alias_id =  alias.alias_id WHERE command.name  {}  And 	command.arguments LIKE \"{}\" And command.position = 0 And alias.num_commands =  \"{}\" 	And command.num_arguments =  \"{}\"  Order By command.alias_id;"
+		#firstquery = "SELECT  command.alias_id , command.name, command.arguments from 	command join alias on command.alias_id =  alias.alias_id WHERE command.name  {}  And 	command.arguments LIKE \"{}\" And command.position = 0 And alias.num_commands =  \"{}\" 	And command.num_arguments =  \"{}\"  Order By command.alias_id;"
+		
+		firstquery = "SELECT  command.alias_id , command.name, command.arguments from 	command INNER JOIN alias on command.alias_id =  alias.alias_id WHERE command.name  {}  And 	command.arguments LIKE \'{}\' And command.position = 0 AND alias.num_commands =  \'{}\'  AND command.num_arguments =  \'{}\'  ORDER BY command.alias_id;"		
+		
 		query = firstquery.format(formatcmd(cmd),rest, num_cmd,  len(args)-1  )
 	else :
 		argum = ' '.join(args[2:len(args)])
 		if argum =='' :
 			argum = "%"
-		restquery = "SELECT  command.alias_id, command.command_id, command.operator, 	command.name, command.arguments from command join alias on command.alias_id =  	alias.alias_id WHERE command.operator = \"{}\"  And command.name  {}  And 	command.arguments LIKE \"{}\" And command.position = \"{}\" And command.num_arguments = 	\"{}\" And alias.alias_id IN {}  Order By command.alias_id;"
+		#restquery = "SELECT  command.alias_id, command.command_id, command.operator, 	command.name, command.arguments from command join alias on command.alias_id =  	alias.alias_id WHERE command.operator = \"{}\"  And command.name  {}  And 	command.arguments LIKE \"{}\" And command.position = \"{}\" And command.num_arguments = 	\"{}\" And alias.alias_id IN {}  Order By command.alias_id;"
+		restquery = "SELECT  command.alias_id, command.command_id, command.operator, 	command.name, command.arguments from command INNER JOIN alias ON command.alias_id =  	alias.alias_id WHERE command.operator = \'{}\'  AND command.name  {}  AND 	command.arguments LIKE \'{}\' AND command.position = \'{}\' AND command.num_arguments = 	\'{}\' AND alias.alias_id IN {}  ORDER BY command.alias_id;"
 		query = restquery.format(args[0], formatcmd(args[1]), argum,  num_cmd, len(args)-2  ,tuple(aliasids)) 
 	return query		
 
@@ -120,7 +124,8 @@ def exactmatchrest(aliascontainer, comps):
 				if arg == "%":
 					j=j+1
 					continue
-				argquery = " SELECT command.alias_id  from argument join command on 	command.command_id =  argument.command_id WHERE argument.name  {}  And 	argument.position = \"{}\"  And argument.command_id = {} Order By command.alias_id;"
+				#argquery = " SELECT command.alias_id  from argument join command on 	command.command_id =  argument.command_id WHERE argument.name  {}  And 	argument.position = \"{}\"  And argument.command_id = {} Order By command.alias_id;"
+				argquery = " SELECT command.alias_id  FROM argument INNER JOIN command ON command.command_id =  argument.command_id WHERE argument.name  {}  AND 	argument.position = \'{}\'  AND argument.command_id = {} ORDER BY command.alias_id;"
 				query =  argquery.format(formatcmd(arg), j, command[1])
 				exists = runquery(query,1)
 				if query is not None :
@@ -268,9 +273,14 @@ def searchdatabase (comps): #components
 		
 
 def runquery(query, exact):
+	print(query + "\n")
 	try:
-		sqliteConnection = sqlite3.connect('./results.db')
-		cursor = sqliteConnection.cursor()
+		conn = psycopg2.connect(
+   		database="aliasresults", user='postgres', password='password1', host='127.0.0.1', port= '5432'
+		)
+		conn.autocommit = True
+		cursor = conn.cursor()
+		
 		if exact == 1:
 			prag = "PRAGMA case_sensitive_like = true"
 			cursor.execute(prag)
@@ -280,11 +290,11 @@ def runquery(query, exact):
 		cursor.close()
 		return record
 		
-	except sqlite3.Error as error:
+	except Error as error:
 		print("Error while connecting to sqlite", error)
 	finally:
-		if (sqliteConnection): 
-			sqliteConnection.close()
+		if (conn): 
+			conn.close()
 			#print("The SQLite connection is closed")
 	
 	
