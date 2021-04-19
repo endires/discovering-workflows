@@ -9,8 +9,9 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.metrics.pairwise import euclidean_distances
 from operator import itemgetter
 import enchant 
+import psycopg2
 
-#Simple shell-workflow-autocomplete program:Finished Exact match
+#okSimple shell-workflow-autocomplete program:Finished Exact match
 #Given an initial command (e.g., git, ps, du, etc.) provide a ranked autocomple^te functionality.
 # More concretely, write a program called shell-workflow-autocomplete that takes as parameter one command (potentially with parameters) and returns a ranked list of pipelines.
 #
@@ -23,8 +24,7 @@ import enchant
 #Full Pipeline, Frequency
 #git log | wc -l | 2343
 #git log | tail -n 17 | 1234
-#
-#If you restrict this to Pipelines of Size 2, this should only be 1 simple SQL Query. Otherwise its a bit longer SQL Query.
+
 
 def getargums (argums) :
 	argx = argums.split(" ")
@@ -50,30 +50,38 @@ def getargums (argums) :
 	return output
 
 
-def formatcmd (cmd) :
+def formatcmd (cmd,exact) :
 	if  "%" in cmd:
-		cmd = "LIKE \'"+cmd + "\'"
+		if exact:
+			cmd = "LIKE \'"+cmd + "\'"
+		else : 
+			cmd = "LIKE LOWER( \'"+cmd + "\')"
 	else :
-		cmd = "= \'"+cmd +"\'"
+		if exact:
+			cmd = "= \'"+cmd +"\'"
+		else : 
+			cmd = "= LOWER(\'"+cmd +"\')"
 	return cmd
 	
-def formquery(args , aliasids , num_cmd): 
+def formquery(args , aliasids , num_cmd, exact): 
 	cmd  = args[0]
 	rest =  ' '.join(args[1:len(args)])
 	
 	if aliasids == 0 :
-		#firstquery = "SELECT  command.alias_id , command.name, command.arguments from 	command join alias on command.alias_id =  alias.alias_id WHERE command.name  {}  And 	command.arguments LIKE \"{}\" And command.position = 0 And alias.num_commands =  \"{}\" 	And command.num_arguments =  \"{}\"  Order By command.alias_id;"
-		
-		firstquery = "SELECT  command.alias_id , command.name, command.arguments from 	command INNER JOIN alias on command.alias_id =  alias.alias_id WHERE command.name  {}  And 	command.arguments LIKE \'{}\' And command.position = 0 AND alias.num_commands =  \'{}\'  AND command.num_arguments =  \'{}\'  ORDER BY command.alias_id;"		
-		
-		query = firstquery.format(formatcmd(cmd),rest, num_cmd,  len(args)-1  )
+		if exact :
+			firstquery = "SELECT  command.alias_id , command.name, command.arguments from 	command join alias on command.alias_id =  alias.alias_id WHERE command.name  {}  And 	command.arguments LIKE \'{}\' And command.position = 0 And alias.num_commands =  \'{}\' 	And command.num_arguments =  \'{}\'  Order By command.alias_id;"
+		else:
+			firstquery = "SELECT  command.alias_id , command.name, command.arguments from 	command join alias on command.alias_id =  alias.alias_id WHERE LOWER(command.name)  {}  And 	LOWER(command.arguments) LIKE \'{}\' And command.position = 0 And alias.num_commands =  \'{}\' 	And command.num_arguments =  \'{}\'  Order By command.alias_id;"
+		query = firstquery.format(formatcmd(cmd,exact),rest, num_cmd,  len(args)-1  )
 	else :
 		argum = ' '.join(args[2:len(args)])
 		if argum =='' :
 			argum = "%"
-		#restquery = "SELECT  command.alias_id, command.command_id, command.operator, 	command.name, command.arguments from command join alias on command.alias_id =  	alias.alias_id WHERE command.operator = \"{}\"  And command.name  {}  And 	command.arguments LIKE \"{}\" And command.position = \"{}\" And command.num_arguments = 	\"{}\" And alias.alias_id IN {}  Order By command.alias_id;"
-		restquery = "SELECT  command.alias_id, command.command_id, command.operator, 	command.name, command.arguments from command INNER JOIN alias ON command.alias_id =  	alias.alias_id WHERE command.operator = \'{}\'  AND command.name  {}  AND 	command.arguments LIKE \'{}\' AND command.position = \'{}\' AND command.num_arguments = 	\'{}\' AND alias.alias_id IN {}  ORDER BY command.alias_id;"
-		query = restquery.format(args[0], formatcmd(args[1]), argum,  num_cmd, len(args)-2  ,tuple(aliasids)) 
+		if exact : 
+			restquery = "SELECT  command.alias_id, command.command_id, command.operator, 	command.name, command.arguments from command join alias on command.alias_id =  	alias.alias_id WHERE command.operator = \'{}\'  And command.name  {}  And 	command.arguments LIKE \'{}\' And command.position = \'{}\' And command.num_arguments = 	\'{}\' And alias.alias_id IN {}  Order By command.alias_id;"
+		else :
+			restquery = "SELECT  command.alias_id, command.command_id, command.operator, 	command.name, command.arguments from command join alias on command.alias_id =  	alias.alias_id WHERE command.operator = \'{}\'  And LOWER(command.name)  {}  And 	LOWER(command.arguments) LIKE \'{}\' And command.position = \'{}\' And command.num_arguments = 	\'{}\' And alias.alias_id IN {}  Order By command.alias_id;"
+		query = restquery.format(args[0], formatcmd(args[1],exact), argum,  num_cmd, len(args)-2  ,tuple(aliasids)) 
 	return query		
 
 def updatedict (aliascontainer, comp):
@@ -100,7 +108,7 @@ def countocc (aliases):
 
 def getfirstcomp(comps, exact):
 	#get first component from database
-	query = formquery(comps[0],0, len(comps))
+	query = formquery(comps[0],0, len(comps),exact)
 	firstcomp = runquery(query,exact)
 	aliascontainer  = createdict(firstcomp)
 	
@@ -109,7 +117,7 @@ def getfirstcomp(comps, exact):
 def exactmatchrest(aliascontainer, comps):
 	i = 1
 	while i< len (comps):
-		query = formquery (comps[i], aliascontainer.keys(), i)
+		query = formquery (comps[i], aliascontainer.keys(), i, 1)
 		comp = runquery (query,1)
 		
 		updatedcontainer =  {}
@@ -124,9 +132,8 @@ def exactmatchrest(aliascontainer, comps):
 				if arg == "%":
 					j=j+1
 					continue
-				#argquery = " SELECT command.alias_id  from argument join command on 	command.command_id =  argument.command_id WHERE argument.name  {}  And 	argument.position = \"{}\"  And argument.command_id = {} Order By command.alias_id;"
-				argquery = " SELECT command.alias_id  FROM argument INNER JOIN command ON command.command_id =  argument.command_id WHERE argument.name  {}  AND 	argument.position = \'{}\'  AND argument.command_id = {} ORDER BY command.alias_id;"
-				query =  argquery.format(formatcmd(arg), j, command[1])
+				argquery = "SELECT command.alias_id  from argument join command on 	command.command_id =  argument.command_id WHERE argument.name  {}  And 	argument.position = \'{}\'  And argument.command_id = {} Order By command.alias_id;"
+				query =  argquery.format(formatcmd(arg, 1), j, command[1])
 				exists = runquery(query,1)
 				if query is not None :
 					continue
@@ -147,7 +154,7 @@ def exactmatchrest(aliascontainer, comps):
 def fuzzyrestofcomponents(aliascontainer, comps):
 	i = 1
 	while i< len (comps):
-		query = formquery (comps[i], aliascontainer.keys(), i)
+		query = formquery (comps[i], aliascontainer.keys(), i, 0)
 		comp = runquery (query,0)
 		
 		updatedcontainer =  {}
@@ -259,7 +266,7 @@ def searchdatabase (comps): #components
 			output = exactresult | newfuzzy
 		
 		output = countocc(output)
-		writeoutput('./output.csv', output)
+		#writeoutput('./output.csv', output)
 		return output
 		
 	else:
@@ -268,29 +275,25 @@ def searchdatabase (comps): #components
 		
 		searchquery = formsearchquery(comps)	
 		output = leven(fuzzyresult, searchquery)
-		writeoutput("./output.csv",output)
+		#writeoutput("./output.csv",output)
 		return output
 		
 
 def runquery(query, exact):
-	print(query + "\n")
 	try:
 		conn = psycopg2.connect(
    		database="aliasresults", user='postgres', password='password1', host='127.0.0.1', port= '5432'
 		)
 		conn.autocommit = True
 		cursor = conn.cursor()
-		
-		if exact == 1:
-			prag = "PRAGMA case_sensitive_like = true"
-			cursor.execute(prag)
+
 		cursor.execute(query)
 		record = cursor.fetchall()
-		cursor.execute("PRAGMA case_sensitive_like = 0")
+		#cursor.execute("PRAGMA case_sensitive_like = 0")
 		cursor.close()
 		return record
 		
-	except Error as error:
+	except Exception as error:
 		print("Error while connecting to sqlite", error)
 	finally:
 		if (conn): 
@@ -313,11 +316,5 @@ def writeoutput(file, output):
 					i=i+1
 
 					
-					
-		
-#components
-
-#comps =  getargums(argums) 
-
-#searchdatabase(comps)
+				
 
